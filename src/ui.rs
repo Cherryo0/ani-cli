@@ -1,7 +1,7 @@
 //! ratatui rendering — MovieBox-Tui visual language (Catppuccin Mocha),
 //! ani-cli branding. Same look, different name.
 
-use crate::app::{App, Screen};
+use crate::app::{App, HomeView, Screen};
 use crate::model::{Anime, SourceKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -81,7 +81,7 @@ fn centered(width: u16, area: Rect) -> Rect {
 
 fn render_home(f: &mut Frame, app: &mut App) {
     // Landing (logo) while there is nothing to show yet — like MovieBox-Tui.
-    if app.items.is_empty() && !app.is_search_results {
+    if app.items.is_empty() && matches!(app.home_view, HomeView::History) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -297,10 +297,10 @@ fn render_results_list(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Length(1), Constraint::Min(0)])
         .split(area);
 
-    let heading = if app.is_search_results {
-        "Results"
-    } else {
-        "Recently played"
+    let heading = match app.home_view {
+        HomeView::History => "Recently played",
+        HomeView::Search => "Results",
+        HomeView::Trending => "Trending",
     };
     let left = format!("{heading} — {} titles", app.items.len());
     let right = format!("{} · p", app.player.name());
@@ -509,6 +509,8 @@ fn render_help_popup(f: &mut Frame) {
         Line::from(""),
         Line::from(vec![key("type"), Span::styled("          start searching on home", st(TEXT))]),
         Line::from(vec![key("/"), Span::styled("            focus search", st(TEXT))]),
+        Line::from(vec![key("/trending"), Span::styled("     show trending anime", st(TEXT))]),
+        Line::from(vec![key("/history"), Span::styled("      back to recently played", st(TEXT))]),
         Line::from(vec![key("enter/space"), Span::styled("  open / play", st(TEXT))]),
         Line::from(vec![key("ctrl+p"), Span::styled("       switch provider", st(TEXT))]),
         Line::from(vec![key("p"), Span::styled("            switch video player", st(TEXT))]),

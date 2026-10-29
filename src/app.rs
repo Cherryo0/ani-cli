@@ -24,8 +24,19 @@ pub enum Screen {
     Help,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeView {
+    /// Recently played episodes (default).
+    History,
+    /// Full-text search results.
+    Search,
+    /// Trending titles, via the `/trending` command.
+    Trending,
+}
+
 enum Pending {
     Search(String),
+    Trending,
     Detail(usize),
     HistoryDetail(usize),
     Sources(usize),
@@ -44,7 +55,7 @@ pub struct App {
     pub input_mode: bool,
     pub search_input: String,
     pub items: Vec<Anime>,
-    pub is_search_results: bool,
+    pub home_view: HomeView,
     pub list_state: ListState,
     pub detail: Option<AnimeDetails>,
     pub episodes: Vec<Episode>,
@@ -89,7 +100,7 @@ impl App {
             input_mode: false,
             search_input: String::new(),
             items,
-            is_search_results: false,
+            home_view: HomeView::History,
             list_state,
             detail: None,
             episodes: Vec::new(),
@@ -119,7 +130,6 @@ impl App {
 
     fn cycle_provider(&mut self) {
         self.provider_idx = (self.provider_idx + 1) % self.providers.len();
-        self.is_search_results = false;
         self.search_input.clear();
         self.refresh_home_items();
         self.status.clear();
@@ -128,7 +138,7 @@ impl App {
     /// Home list always mirrors the watch history (no trending).
     fn refresh_home_items(&mut self) {
         self.items = self.watch_history.iter().map(|e| e.as_anime()).collect();
-        self.is_search_results = false;
+        self.home_view = HomeView::History;
         self.list_state.select(Some(0));
     }
 
@@ -236,9 +246,17 @@ impl App {
                     let items = self.providers[self.provider_idx].search(&q).await?;
                     let n = items.len();
                     self.items = items;
-                    self.is_search_results = true;
+                    self.home_view = HomeView::Search;
                     self.list_state.select(Some(0));
                     self.status = format!("{n} result(s) for \"{q}\"");
+                }
+                Pending::Trending => {
+                    let items = self.providers[self.provider_idx].trending().await?;
+                    let n = items.len();
+                    self.items = items;
+                    self.home_view = HomeView::Trending;
+                    self.list_state.select(Some(0));
+                    self.status = format!("{n} trending titles");
                 }
                 Pending::Detail(i) => {
                     if let Some(anime) = self.items.get(i).cloned() {
@@ -346,7 +364,15 @@ impl App {
                 KeyCode::Enter => {
                     self.input_mode = false;
                     let q = self.search_input.trim().to_string();
-                    if !q.is_empty() {
+                    // Slash commands, MovieBox-Tui style.
+                    if q.eq_ignore_ascii_case("/trending") {
+                        self.search_input.clear();
+                        self.pending = Some(Pending::Trending);
+                    } else if q.eq_ignore_ascii_case("/history") {
+                        self.search_input.clear();
+                        self.refresh_home_items();
+                        self.status.clear();
+                    } else if !q.is_empty() {
                         self.pending = Some(Pending::Search(q));
                     }
                 }
@@ -378,12 +404,11 @@ impl App {
             KeyCode::Enter | KeyCode::Char(' ') => match self.screen {
                 Screen::Home => {
                     if let Some(i) = self.list_state.selected() {
-                        // Search results open normally; history entries
-                        // reopen their anime's detail page.
-                        self.pending = Some(if self.is_search_results {
-                            Pending::Detail(i)
-                        } else {
-                            Pending::HistoryDetail(i)
+                        // Search results and trending open normally;
+                        // history entries reopen their anime's detail page.
+                        self.pending = Some(match self.home_view {
+                            HomeView::History => Pending::HistoryDetail(i),
+                            HomeView::Search | HomeView::Trending => Pending::Detail(i),
                         });
                     }
                 }
@@ -551,7 +576,7 @@ mod keymap_tests {
     #[test]
     fn space_opens_like_enter() {
         let mut app = app_with_items(3);
-        app.is_search_results = true;
+        app.home_view = HomeView::Search;
         let (code, mods) = key(KeyCode::Char(' '));
         let action = app.handle_key(code, mods);
         assert!(action.is_none());
@@ -717,7 +742,7 @@ mod history_tests {
         let mut app = App::new(None, None);
         app.watch_history = vec![entry("1")];
         app.refresh_home_items();
-        assert!(!app.is_search_results);
+        assert_eq!(app.home_view, HomeView::History);
         let (code, mods) = key(KeyCode::Enter);
         app.handle_key(code, mods);
         assert!(matches!(app.pending, Some(Pending::HistoryDetail(0))));
@@ -751,10 +776,56 @@ mod history_tests {
         with_temp_home(|| {
             history::save_history(&[entry("7")]);
             let app = App::new(None, None);
-            assert!(!app.is_search_results);
+            assert_eq!(app.home_view, HomeView::History);
             assert_eq!(app.items.len(), 1);
             assert_eq!(app.items[0].title, "Naruto");
             assert!(app.pending.is_none(), "no auto-trending on boot");
         });
+    }
+}
+
+#[cfg(test)]
+mod slash_command_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    fn enter_with_input(input: &str) -> App {
+        let mut app = App::new(None, None);
+        app.input_mode = true;
+        app.search_input = input.into();
+        let mods = KeyModifiers::empty();
+        app.handle_key(KeyCode::Enter, mods);
+        app
+    }
+
+    #[test]
+    fn slash_trending_queues_trending_fetch() {
+        let app = enter_with_input("/trending");
+        assert!(!app.input_mode);
+        assert_eq!(app.search_input, "");
+        assert!(matches!(app.pending, Some(Pending::Trending)));
+    }
+
+    #[test]
+    fn slash_trending_is_case_insensitive() {
+        let app = enter_with_input("/TRENDING");
+        assert!(matches!(app.pending, Some(Pending::Trending)));
+    }
+
+    #[test]
+    fn slash_history_returns_to_history_view() {
+        let mut app = App::new(None, None);
+        app.home_view = HomeView::Trending;
+        app.input_mode = true;
+        app.search_input = "/history".into();
+        app.handle_key(KeyCode::Enter, KeyModifiers::empty());
+        assert_eq!(app.home_view, HomeView::History);
+        assert!(app.pending.is_none(), "/history must not fetch anything");
+    }
+
+    #[test]
+    fn normal_search_still_queues_search() {
+        let app = enter_with_input("naruto");
+        assert!(matches!(app.pending, Some(Pending::Search(_))));
     }
 }
