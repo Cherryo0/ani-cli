@@ -318,6 +318,7 @@ impl Provider for WatchAnimeWorld {
                 quality: Some("HD".to_string()),
                 kind: SourceKind::EmbedPage,
                 headers: vec![("Referer".to_string(), format!("{BASE}/"))],
+                subtitle_url: None,
             });
         }
 
@@ -339,6 +340,7 @@ impl Provider for WatchAnimeWorld {
                             quality: None,
                             kind: SourceKind::EmbedPage,
                             headers: vec![("Referer".to_string(), format!("{BASE}/"))],
+                            subtitle_url: None,
                         });
                     }
                 }

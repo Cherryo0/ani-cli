@@ -148,6 +148,7 @@ fn sources_show_kind_and_quality_badges() {
             quality: Some("HD".into()),
             kind: SourceKind::Hls,
             headers: vec![],
+        subtitle_url: None,
         },
         StreamSource {
             label: "Japanese (Sub) · Server 1".into(),
@@ -155,6 +156,7 @@ fn sources_show_kind_and_quality_badges() {
             quality: None,
             kind: SourceKind::EmbedPage,
             headers: vec![],
+        subtitle_url: None,
         },
     ];
     let text = render(&mut app);

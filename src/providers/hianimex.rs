@@ -264,6 +264,7 @@ impl Provider for HiAnimeX {
                             quality: Some("HD".to_string()),
                             kind: SourceKind::Hls,
                             headers: vec![("Referer".to_string(), direct.referer)],
+                            subtitle_url: direct.subtitle_url,
                         });
                         continue;
                     }
@@ -276,6 +277,7 @@ impl Provider for HiAnimeX {
                 quality: None,
                 kind: SourceKind::EmbedPage,
                 headers: vec![("Referer".to_string(), format!("{BASE}/"))],
+                subtitle_url: None,
             });
         }
         if out.is_empty() {
@@ -339,6 +341,7 @@ mod sort_tests {
             quality: None,
             kind,
             headers: vec![],
+        subtitle_url: None,
         }
     }
 

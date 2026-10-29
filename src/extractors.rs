@@ -15,6 +15,9 @@ pub struct ResolvedStream {
     pub url: String,
     /// Referer the player should send (usually the embed page itself).
     pub referer: String,
+    /// Default subtitle track URL, when the embed ships one
+    /// (pystardust/ani-cli passes this as mpv's `--sub-file`).
+    pub subtitle_url: Option<String>,
 }
 
 static ZOKO_PAYLOAD: Lazy<Regex> =
@@ -60,10 +63,39 @@ pub async fn resolve_zokoanime(embed_url: &str) -> anyhow::Result<ResolvedStream
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow::anyhow!("zokoanime payload has no src"))?;
 
+    // Subtitle tracks: prefer the default one, fall back to the first.
+    // (pystardust/ani-cli does the same for its --sub-file support.)
+    let subtitle_url = parse_subtitle_url(&v, embed_url);
+
     Ok(ResolvedStream {
         url: src.to_string(),
         referer: embed_url.to_string(),
+        subtitle_url,
     })
+}
+
+/// Pick the default subtitle track from a deobfuscated ZokoAnime payload
+/// (falling back to the first track), resolving relative URLs against the
+/// embed origin.
+fn parse_subtitle_url(v: &serde_json::Value, embed_url: &str) -> Option<String> {
+    v.get("subtitles")
+        .and_then(|s| s.as_array())
+        .and_then(|arr| {
+            arr.iter()
+                .find(|t| t.get("default").and_then(|d| d.as_bool()).unwrap_or(false))
+                .or_else(|| arr.first())
+        })
+        .and_then(|t| t.get("src"))
+        .and_then(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            if s.starts_with("http") {
+                s.to_string()
+            } else {
+                let origin = embed_url.split('/').take(3).collect::<Vec<_>>().join("/");
+                format!("{}/{}", origin, s.trim_start_matches('/'))
+            }
+        })
 }
 
 fn base64_decode(s: &str) -> anyhow::Result<Vec<u8>> {
@@ -125,5 +157,42 @@ mod tests {
     fn base64_decodes() {
         assert_eq!(base64_decode("aGk=").unwrap(), b"hi");
         assert_eq!(base64_decode("aGk").unwrap(), b"hi");
+    }
+
+    #[test]
+    fn subtitle_prefers_default_track() {
+        let v: serde_json::Value = serde_json::from_str(
+            r#"{"src":"https://x/y.m3u8","subtitles":[
+                {"src":"https://x/subs/es.vtt","label":"Spanish"},
+                {"src":"https://x/subs/en.vtt","label":"English","default":true}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_subtitle_url(&v, "https://zokoanime.video/stream/mal/1/1/sub"),
+            Some("https://x/subs/en.vtt".to_string())
+        );
+    }
+
+    #[test]
+    fn subtitle_falls_back_to_first_and_resolves_relative() {
+        let v: serde_json::Value = serde_json::from_str(
+            r#"{"src":"https://x/y.m3u8","subtitles":[{"src":"/subs/en.vtt","label":"English"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_subtitle_url(&v, "https://zokoanime.video/stream/mal/1/1/sub"),
+            Some("https://zokoanime.video/subs/en.vtt".to_string())
+        );
+    }
+
+    #[test]
+    fn subtitle_none_when_absent() {
+        let v: serde_json::Value =
+            serde_json::from_str(r#"{"src":"https://x/y.m3u8"}"#).unwrap();
+        assert_eq!(
+            parse_subtitle_url(&v, "https://zokoanime.video/stream/mal/1/1/sub"),
+            None
+        );
     }
 }

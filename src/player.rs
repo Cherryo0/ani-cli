@@ -109,6 +109,7 @@ pub fn build_command(
 ) -> anyhow::Result<Command> {
     let referer = source.referer().map(str::to_string);
     let url = source.url.clone();
+    let sub = source.subtitle_url.clone().filter(|s| !s.is_empty());
 
     let mut cmd = match player {
         PlayerKind::Mpv => {
@@ -120,6 +121,9 @@ pub fn build_command(
             if source.kind == SourceKind::Hls {
                 c.arg("--hls-bitrate=max");
             }
+            if let Some(s) = &sub {
+                c.arg(format!("--sub-file={s}"));
+            }
             c.arg("--no-terminal");
             c
         }
@@ -128,12 +132,19 @@ pub fn build_command(
             if let Some(r) = &referer {
                 c.arg(format!("--http-referrer={r}"));
             }
+            if let Some(s) = &sub {
+                c.arg(format!(":input-slave={s}"));
+            }
             c.arg("--meta-title").arg(title);
             c
         }
         PlayerKind::Iina => {
             let mut c = Command::new("iina");
             c.arg("--no-stdin").arg("--keep-running");
+            // mpv splits sub-files on ':', so the url has to be escaped for iina.
+            if let Some(s) = &sub {
+                c.arg(format!("--mpv-sub-files={}", s.replace(':', "\\:")));
+            }
             c
         }
         PlayerKind::Ffplay => {
@@ -202,6 +213,7 @@ mod tests {
             quality: Some("720p".into()),
             kind: SourceKind::Direct,
             headers: vec![("Referer".into(), "https://animostream.xyz/".into())],
+            subtitle_url: None,
         }
     }
 
@@ -214,6 +226,28 @@ mod tests {
             .collect();
         assert!(args.iter().any(|a| a.contains("Referer: https://animostream.xyz/")));
         assert!(args.iter().any(|a| a.contains("Naruto EP 1")));
+    }
+
+    #[test]
+    fn mpv_gets_sub_file_when_subtitles_present() {
+        let mut s = sample();
+        s.subtitle_url = Some("https://cdn.example/subs/en.vtt".into());
+        let cmd = build_command(PlayerKind::Mpv, &s, "Naruto EP 1").unwrap();
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.iter().any(|a| a == "--sub-file=https://cdn.example/subs/en.vtt"));
+    }
+
+    #[test]
+    fn mpv_omits_sub_file_without_subtitles() {
+        let cmd = build_command(PlayerKind::Mpv, &sample(), "Naruto EP 1").unwrap();
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(!args.iter().any(|a| a.starts_with("--sub-file")));
     }
 
     #[test]

@@ -287,6 +287,7 @@ impl Provider for AnimoStream {
                 quality: None,
                 kind: SourceKind::EmbedPage,
                 headers: vec![("Referer".to_string(), format!("{BASE}/"))],
+                subtitle_url: None,
             })
             .collect())
     }

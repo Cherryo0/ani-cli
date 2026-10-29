@@ -5,6 +5,7 @@
 //! new site is a single new file.
 
 pub mod animostream;
+pub mod hianimeat;
 pub mod hianimex;
 pub mod watchanimeworld;
 
@@ -34,9 +35,12 @@ pub trait Provider: Send + Sync {
 /// Every provider the app ships with, in priority order.
 /// HiAnimeX is first: it is the only source with *direct* HLS streams
 /// (via the zokoanime extractor), so playback actually lands in mpv.
+/// HiAnimeAt is pystardust/ani-cli's backend (same HiAnime network,
+/// newer `/api/theme/` endpoints) — also with direct ZokoAnime streams.
 pub fn all_providers() -> Vec<Box<dyn Provider>> {
     vec![
         Box::new(hianimex::HiAnimeX),
+        Box::new(hianimeat::HiAnimeAt),
         Box::new(watchanimeworld::WatchAnimeWorld),
         Box::new(animostream::AnimoStream),
     ]

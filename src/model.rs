@@ -76,6 +76,8 @@ pub struct StreamSource {
     pub kind: SourceKind,
     /// Extra HTTP headers the player must send (Referer, ...).
     pub headers: Vec<(String, String)>,
+    /// Subtitle track URL, passed as --sub-file (mpv) etc. when present.
+    pub subtitle_url: Option<String>,
 }
 
 /// How the stream URL should be treated.
