@@ -281,8 +281,21 @@ impl Provider for HiAnimeX {
         if out.is_empty() {
             anyhow::bail!("No playable sources found for this episode");
         }
+        // Playable-in-player sources first: the default selection should
+        // open in mpv, not a browser tab. Stable sort keeps the per-language
+        // grouping inside each kind.
+        sort_sources_for_playback(&mut out);
         Ok(out)
     }
+}
+
+/// Direct/HLS sources first so the default pick plays in the video player
+/// instead of opening a browser tab. Stable: keeps per-language grouping.
+fn sort_sources_for_playback(out: &mut Vec<StreamSource>) {
+    out.sort_by_key(|s| match s.kind {
+        SourceKind::Hls | SourceKind::Direct => 0,
+        SourceKind::EmbedPage => 1,
+    });
 }
 
 #[cfg(test)]
@@ -311,5 +324,44 @@ mod tests {
         let cap = EP_ATTRS.captures(html).unwrap();
         assert_eq!(&cap[1], "1");
         assert_eq!(&cap[2], "76");
+    }
+}
+
+#[cfg(test)]
+mod sort_tests {
+    use super::*;
+    use crate::model::{SourceKind, StreamSource};
+
+    fn src(label: &str, kind: SourceKind) -> StreamSource {
+        StreamSource {
+            label: label.into(),
+            url: "https://example.com/x".into(),
+            quality: None,
+            kind,
+            headers: vec![],
+        }
+    }
+
+    #[test]
+    fn direct_sources_sort_before_browser_ones() {
+        let mut v = vec![
+            src("Japanese (Sub) · Server 1", SourceKind::EmbedPage),
+            src("Japanese (Sub) · Server 2", SourceKind::EmbedPage),
+            src("Japanese (Sub) · Direct", SourceKind::Hls),
+            src("English (Dub) · Server 4", SourceKind::EmbedPage),
+            src("English (Dub) · Direct", SourceKind::Hls),
+        ];
+        sort_sources_for_playback(&mut v);
+        let labels: Vec<&str> = v.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "Japanese (Sub) · Direct",
+                "English (Dub) · Direct",
+                "Japanese (Sub) · Server 1",
+                "Japanese (Sub) · Server 2",
+                "English (Dub) · Server 4",
+            ]
+        );
     }
 }
