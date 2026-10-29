@@ -1,0 +1,31 @@
+[package]
+name = "ani-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Watch anime in your terminal — multi-provider TUI with mpv/VLC/iina support"
+license = "MIT"
+repository = "https://github.com/Cherryo0/ani-cli"
+
+[[bin]]
+name = "ani-cli"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+scraper = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+async-trait = "0.1"
+url = "2"
+dirs = "6"
+once_cell = "1"
+rustls-pemfile = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
