@@ -258,6 +258,13 @@ fn render_center_status(f: &mut Frame, app: &App, area: Rect) {
                 .style(st(color)),
             area,
         );
+    } else if app.watch_history.is_empty() {
+        f.render_widget(
+            Paragraph::new("No recently played anime yet — search to start watching")
+                .alignment(Alignment::Center)
+                .style(st(TEXT_DIM)),
+            area,
+        );
     }
 }
 
@@ -293,7 +300,7 @@ fn render_results_list(f: &mut Frame, app: &mut App, area: Rect) {
     let heading = if app.is_search_results {
         "Results"
     } else {
-        "Trending"
+        "Recently played"
     };
     let left = format!("{heading} — {} titles", app.items.len());
     let right = format!("{} · p", app.player.name());
@@ -435,9 +442,7 @@ fn render_detail(f: &mut Frame, app: &mut App, area: Rect) {
         chunks[2],
         &[
             ("enter", "play episode"),
-            ("b", "back"),
-            ("p", "player"),
-            ("q", "quit"),
+            ("q", "back"),
         ],
     );
 }
@@ -489,7 +494,7 @@ fn render_sources(f: &mut Frame, app: &mut App, area: Rect) {
         .highlight_symbol("▶ ");
     f.render_stateful_widget(list, chunks[1], &mut app.src_state);
 
-    bottom_bar(f, chunks[2], &[("enter", "play"), ("b", "back"), ("q", "quit")]);
+    bottom_bar(f, chunks[2], &[("enter", "play"), ("q", "back")]);
 }
 
 // ── help ────────────────────────────────────────────────────────────────────
@@ -511,8 +516,9 @@ fn render_help_popup(f: &mut Frame) {
         Line::from(vec![key("j / k"), Span::styled("          move (also ↑ ↓)", st(TEXT))]),
         Line::from(vec![key("pgup/pgdn"), Span::styled("      jump 10 rows", st(TEXT))]),
         Line::from(vec![key("home/end"), Span::styled("       first / last", st(TEXT))]),
-        Line::from(vec![key("b / esc"), Span::styled("      back", st(TEXT))]),
-        Line::from(vec![key("ctrl+c / q"), Span::styled("   quit", st(TEXT))]),
+        Line::from(vec![key("b / q"), Span::styled("          back", st(TEXT))]),
+        Line::from(vec![key("esc"), Span::styled("            back (quit on home)", st(TEXT))]),
+        Line::from(vec![key("ctrl+c"), Span::styled("         quit anywhere", st(TEXT))]),
         Line::from(vec![key("?"), Span::styled("            this help", st(TEXT))]),
         Line::from(""),
         Line::from(vec![Span::styled(

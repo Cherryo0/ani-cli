@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod extractors;
+pub mod history;
 pub mod model;
 pub mod player;
 pub mod providers;

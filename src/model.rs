@@ -97,3 +97,31 @@ impl StreamSource {
             .map(|(_, v)| v.as_str())
     }
 }
+
+/// One played episode, persisted to disk and shown on the home screen
+/// ("Recently played") instead of trending titles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub anime_id: String,
+    pub anime_title: String,
+    pub anime_url: String,
+    pub provider_id: String,
+    pub episode_number: String,
+    pub episode_title: String,
+    pub played_at_unix: i64,
+}
+
+impl HistoryEntry {
+    /// Row shown on the home screen.
+    pub fn as_anime(&self) -> Anime {
+        Anime {
+            id: self.anime_id.clone(),
+            title: self.anime_title.clone(),
+            url: self.anime_url.clone(),
+            poster: None,
+            languages: vec![],
+            note: format!("EP {}", self.episode_number),
+            provider_id: self.provider_id.clone(),
+        }
+    }
+}

@@ -1,7 +1,8 @@
 //! App state machine + event loop.
 
 use crate::{
-    model::{Anime, AnimeDetails, Episode, StreamSource},
+    history,
+    model::{Anime, AnimeDetails, Episode, HistoryEntry, StreamSource},
     player::{self, PlayerKind},
     providers::{self, Provider},
 };
@@ -24,9 +25,9 @@ pub enum Screen {
 }
 
 enum Pending {
-    Trending,
     Search(String),
     Detail(usize),
+    HistoryDetail(usize),
     Sources(usize),
 }
 
@@ -52,6 +53,8 @@ pub struct App {
     pub src_state: ListState,
     pub status: String,
     pub loading: bool,
+    /// Recently played episodes — shown on the home screen instead of trending.
+    pub watch_history: Vec<HistoryEntry>,
     history: Vec<Screen>,
     pending: Option<Pending>,
     selected_episode: Option<Episode>,
@@ -76,6 +79,8 @@ impl App {
         };
         let mut list_state = ListState::default();
         list_state.select(Some(0));
+        let watch_history = history::load_history();
+        let items: Vec<Anime> = watch_history.iter().map(|e| e.as_anime()).collect();
         Self {
             providers,
             provider_idx,
@@ -83,7 +88,7 @@ impl App {
             screen: Screen::Home,
             input_mode: false,
             search_input: String::new(),
-            items: Vec::new(),
+            items,
             is_search_results: false,
             list_state,
             detail: None,
@@ -93,6 +98,7 @@ impl App {
             src_state: ListState::default(),
             status,
             loading: false,
+            watch_history,
             history: Vec::new(),
             pending: None,
             selected_episode: None,
@@ -115,7 +121,47 @@ impl App {
         self.provider_idx = (self.provider_idx + 1) % self.providers.len();
         self.is_search_results = false;
         self.search_input.clear();
-        self.pending = Some(Pending::Trending);
+        self.refresh_home_items();
+        self.status.clear();
+    }
+
+    /// Home list always mirrors the watch history (no trending).
+    fn refresh_home_items(&mut self) {
+        self.items = self.watch_history.iter().map(|e| e.as_anime()).collect();
+        self.is_search_results = false;
+        self.list_state.select(Some(0));
+    }
+
+    /// Record the just-played episode at the front of the history
+    /// (deduplicated) and persist it.
+    fn record_play(&mut self) {
+        let (Some(detail), Some(ep)) =
+            (self.detail.clone(), self.selected_episode.clone())
+        else {
+            return;
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let entry = HistoryEntry {
+            anime_id: detail.anime.id.clone(),
+            anime_title: detail.anime.title.clone(),
+            anime_url: detail.anime.url.clone(),
+            provider_id: self.providers[self.provider_idx].id().to_string(),
+            episode_number: ep.number.clone(),
+            episode_title: ep.title.clone(),
+            played_at_unix: now,
+        };
+        self.watch_history.retain(|e| {
+            !(e.anime_id == entry.anime_id
+                && e.episode_number == entry.episode_number
+                && e.provider_id == entry.provider_id)
+        });
+        self.watch_history.insert(0, entry);
+        self.watch_history.truncate(50);
+        history::save_history(&self.watch_history);
+        self.refresh_home_items();
     }
 
     fn cycle_player(&mut self) {
@@ -186,13 +232,6 @@ impl App {
     async fn execute_pending(&mut self, p: Pending) {
         let result: Result<()> = async {
             match p {
-                Pending::Trending => {
-                    let items = self.providers[self.provider_idx].trending().await?;
-                    self.items = items;
-                    self.is_search_results = false;
-                    self.list_state.select(Some(0));
-                    self.status.clear();
-                }
                 Pending::Search(q) => {
                     let items = self.providers[self.provider_idx].search(&q).await?;
                     let n = items.len();
@@ -209,6 +248,33 @@ impl App {
                         self.detail = Some(details);
                         self.episodes = episodes;
                         self.ep_state.select(Some(0));
+                        self.status.clear();
+                    }
+                }
+                Pending::HistoryDetail(i) => {
+                    if let Some(entry) = self.watch_history.get(i).cloned() {
+                        if let Some(pi) = self
+                            .providers
+                            .iter()
+                            .position(|p| p.id() == entry.provider_id)
+                        {
+                            self.provider_idx = pi;
+                        }
+                        let anime = entry.as_anime();
+                        let details =
+                            self.providers[self.provider_idx].details(&anime).await?;
+                        let episodes =
+                            self.providers[self.provider_idx].episodes(&anime).await?;
+                        self.push_screen(Screen::Detail);
+                        self.detail = Some(details);
+                        self.episodes = episodes;
+                        // Pre-select the episode that was played.
+                        let sel = self
+                            .episodes
+                            .iter()
+                            .position(|e| e.number == entry.episode_number)
+                            .unwrap_or(0);
+                        self.ep_state.select(Some(sel));
                         self.status.clear();
                     }
                 }
@@ -293,7 +359,13 @@ impl App {
             return None;
         }
         match code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => return Some(LoopAction::Quit),
+            // MovieBox-Tui: q backs out everywhere except Home, where it quits.
+            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                if self.screen == Screen::Home {
+                    return Some(LoopAction::Quit);
+                }
+                self.go_back();
+            }
             KeyCode::Char('?') => self.push_screen(Screen::Help),
             KeyCode::Char('p') => self.cycle_player(),
             KeyCode::Char('b') | KeyCode::Char('B') => self.go_back(),
@@ -306,7 +378,13 @@ impl App {
             KeyCode::Enter | KeyCode::Char(' ') => match self.screen {
                 Screen::Home => {
                     if let Some(i) = self.list_state.selected() {
-                        self.pending = Some(Pending::Detail(i));
+                        // Search results open normally; history entries
+                        // reopen their anime's detail page.
+                        self.pending = Some(if self.is_search_results {
+                            Pending::Detail(i)
+                        } else {
+                            Pending::HistoryDetail(i)
+                        });
                     }
                 }
                 Screen::Detail => {
@@ -395,16 +473,19 @@ async fn run_ui(app: &mut App) -> Result<LoopAction> {
 
 pub async fn run(player_override: Option<String>, provider_override: Option<String>) -> Result<()> {
     let mut app = App::new(player_override, provider_override);
-    app.pending = Some(Pending::Trending);
     loop {
         match run_ui(&mut app).await? {
             LoopAction::Quit => break,
             LoopAction::Play { source, title } => {
+                // Record first so the episode is in history even if
+                // the player fails to launch.
+                app.record_play();
                 if let Err(e) = player::play(app.player, &source, &title) {
                     app.status = format!("Player error: {e:#}");
                 } else {
                     app.status = format!("Finished: {title}");
                 }
+                // Loop back into the TUI — the app never quits on play.
             }
         }
     }
@@ -470,6 +551,7 @@ mod keymap_tests {
     #[test]
     fn space_opens_like_enter() {
         let mut app = app_with_items(3);
+        app.is_search_results = true;
         let (code, mods) = key(KeyCode::Char(' '));
         let action = app.handle_key(code, mods);
         assert!(action.is_none());
@@ -539,5 +621,140 @@ mod keymap_tests {
         app.handle_key(code, mods);
         assert!(!app.input_mode);
         assert!(app.pending.is_none(), "Esc must not trigger a search");
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use crate::model::{AnimeDetails, Episode};
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    static ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+        std::sync::OnceLock::new();
+
+    /// Run `f` with HOME pointed at a fresh temp dir so history
+    /// persistence never touches real user data.
+    fn with_temp_home(f: impl FnOnce()) {
+        let _guard = ENV_LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .unwrap();
+        let old = std::env::var("HOME").ok();
+        let tmp = std::env::temp_dir().join(format!("ani-cli-home-{}", std::process::id()));
+        std::env::set_var("HOME", &tmp);
+        f();
+        match old {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    fn key(code: KeyCode) -> (KeyCode, KeyModifiers) {
+        (code, KeyModifiers::empty())
+    }
+
+    fn entry(ep: &str) -> HistoryEntry {
+        HistoryEntry {
+            anime_id: "43".into(),
+            anime_title: "Naruto".into(),
+            anime_url: "https://example.com/n".into(),
+            provider_id: "hianimex".into(),
+            episode_number: ep.into(),
+            episode_title: format!("Episode {ep}"),
+            played_at_unix: 1,
+        }
+    }
+
+    fn played_app(ep_number: &str, ep_title: &str) -> App {
+        let mut app = App::new(None, None);
+        app.detail = Some(AnimeDetails {
+            anime: crate::model::Anime {
+                id: "43".into(),
+                title: "Naruto".into(),
+                url: "https://example.com/n".into(),
+                poster: None,
+                languages: vec![],
+                note: String::new(),
+                provider_id: "hianimex".into(),
+            },
+            synopsis: String::new(),
+            genres: vec![],
+            status: String::new(),
+            year: String::new(),
+        });
+        app.selected_episode = Some(Episode {
+            number: ep_number.into(),
+            title: ep_title.into(),
+            url: String::new(),
+            languages: vec![],
+            servers: vec![],
+        });
+        app
+    }
+
+    #[test]
+    fn q_on_detail_goes_back_instead_of_quitting() {
+        let mut app = App::new(None, None);
+        app.push_screen(Screen::Detail);
+        let (code, mods) = key(KeyCode::Char('q'));
+        let action = app.handle_key(code, mods);
+        assert!(action.is_none(), "q on Detail must not quit the app");
+        assert_eq!(app.screen, Screen::Home);
+    }
+
+    #[test]
+    fn q_on_home_still_quits() {
+        let mut app = App::new(None, None);
+        let (code, mods) = key(KeyCode::Char('q'));
+        let action = app.handle_key(code, mods);
+        assert!(matches!(action, Some(LoopAction::Quit)));
+    }
+
+    #[test]
+    fn enter_on_history_item_opens_history_detail() {
+        let mut app = App::new(None, None);
+        app.watch_history = vec![entry("1")];
+        app.refresh_home_items();
+        assert!(!app.is_search_results);
+        let (code, mods) = key(KeyCode::Enter);
+        app.handle_key(code, mods);
+        assert!(matches!(app.pending, Some(Pending::HistoryDetail(0))));
+    }
+
+    #[test]
+    fn record_play_prepends_dedupes_and_persists() {
+        with_temp_home(|| {
+            let mut app = played_app("2", "Episode 2");
+            app.watch_history = vec![entry("1")];
+            app.record_play();
+            assert_eq!(app.watch_history.len(), 2);
+            assert_eq!(app.watch_history[0].episode_number, "2");
+
+            // Replaying EP1 moves it to the front without duplicating.
+            let mut app2 = played_app("1", "Episode 1");
+            app2.watch_history = app.watch_history.clone();
+            app2.record_play();
+            assert_eq!(app2.watch_history.len(), 2);
+            assert_eq!(app2.watch_history[0].episode_number, "1");
+
+            // Persisted to disk.
+            let loaded = history::load_history();
+            assert_eq!(loaded.len(), 2);
+            assert_eq!(loaded[0].episode_number, "1");
+        });
+    }
+
+    #[test]
+    fn fresh_app_shows_history_not_trending() {
+        with_temp_home(|| {
+            history::save_history(&[entry("7")]);
+            let app = App::new(None, None);
+            assert!(!app.is_search_results);
+            assert_eq!(app.items.len(), 1);
+            assert_eq!(app.items[0].title, "Naruto");
+            assert!(app.pending.is_none(), "no auto-trending on boot");
+        });
     }
 }
