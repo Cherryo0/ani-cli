@@ -1,6 +1,3 @@
-mod app;
-mod ui;
-
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -11,7 +8,7 @@ struct Cli {
     #[arg(short, long)]
     player: Option<String>,
 
-    /// Provider to start with (animostream, watchanimeworld, hianimex).
+    /// Provider to start with (hianimex, watchanimeworld, animostream).
     #[arg(short = 'P', long)]
     provider: Option<String>,
 }
@@ -19,5 +16,5 @@ struct Cli {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    app::run(cli.player, cli.provider).await
+    ani_cli::app::run(cli.player, cli.provider).await
 }

@@ -1,6 +1,6 @@
 //! App state machine + event loop.
 
-use ani_cli::{
+use crate::{
     model::{Anime, AnimeDetails, Episode, StreamSource},
     player::{self, PlayerKind},
     providers::{self, Provider},
@@ -58,7 +58,7 @@ pub struct App {
 }
 
 impl App {
-    fn new(player_override: Option<String>, provider_override: Option<String>) -> Self {
+    pub fn new(player_override: Option<String>, provider_override: Option<String>) -> Self {
         let providers = providers::all_providers();
         let provider_idx = provider_override
             .as_deref()
@@ -321,9 +321,11 @@ async fn run_ui(app: &mut App) -> Result<LoopAction> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let action = app.event_loop(&mut terminal).await;
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    // Always restore the terminal, even when the event loop errored —
+    // otherwise the user's shell is left in raw mode on a dead screen.
+    let _ = disable_raw_mode();
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let _ = terminal.show_cursor();
     action
 }
 

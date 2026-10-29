@@ -1,7 +1,7 @@
 //! ratatui rendering — MovieBox-Tui-flavoured screens.
 
 use crate::app::{App, Screen};
-use ani_cli::model::{Anime, SourceKind};
+use crate::model::{Anime, SourceKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
