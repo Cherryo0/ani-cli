@@ -53,7 +53,7 @@ fn home_empty_shows_logo_search_pill_and_hints() {
     assert!(text.contains("Search anime"), "search placeholder missing");
     // Provider pill shows the active provider, MovieBox-Tui style.
     assert!(text.contains("HiAnimeX"), "provider pill missing");
-    assert!(text.contains("Tab"), "provider switch hint missing");
+    assert!(text.contains("Ctrl+P"), "provider switch hint missing");
     assert!(text.contains("search"), "bottom bar hints missing");
     assert!(text.contains("quit"), "bottom bar hints missing");
 }

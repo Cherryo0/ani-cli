@@ -103,7 +103,7 @@ fn render_home(f: &mut Frame, app: &mut App) {
             chunks[6],
             &[
                 ("/", "search"),
-                ("tab", "provider"),
+                ("ctrl+p", "provider"),
                 ("enter", "open"),
                 ("p", "player"),
                 ("?", "help"),
@@ -138,7 +138,7 @@ fn render_home(f: &mut Frame, app: &mut App) {
         chunks[idx + 1],
         &[
             ("/", "search"),
-            ("tab", "provider"),
+            ("ctrl+p", "provider"),
             ("enter", "open"),
             ("p", "player"),
             ("?", "help"),
@@ -205,7 +205,7 @@ fn render_search_bar(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let provider = &app.providers[app.provider_idx];
-    let pill = format!("[{} · Tab]", provider.name());
+    let pill = format!("[{} · Ctrl+P]", provider.name());
     let pill_width = pill.len() as u16;
 
     let query = if app.search_input.is_empty() && !app.input_mode {
@@ -502,14 +502,18 @@ fn render_help_popup(f: &mut Frame) {
         Line::from(""),
         Line::from(vec![Span::styled(" keybindings", bold(TITLE))]),
         Line::from(""),
+        Line::from(vec![key("type"), Span::styled("          start searching on home", st(TEXT))]),
         Line::from(vec![key("/"), Span::styled("            focus search", st(TEXT))]),
-        Line::from(vec![key("enter"), Span::styled("        open / play", st(TEXT))]),
-        Line::from(vec![key("tab"), Span::styled("          switch provider", st(TEXT))]),
+        Line::from(vec![key("enter/space"), Span::styled("  open / play", st(TEXT))]),
+        Line::from(vec![key("ctrl+p"), Span::styled("       switch provider", st(TEXT))]),
         Line::from(vec![key("p"), Span::styled("            switch video player", st(TEXT))]),
-        Line::from(vec![key("b / esc"), Span::styled("      back", st(TEXT))]),
+        Line::from(vec![key("ctrl+u / w"), Span::styled("  clear / delete word in search", st(TEXT))]),
         Line::from(vec![key("j / k"), Span::styled("          move (also ↑ ↓)", st(TEXT))]),
+        Line::from(vec![key("pgup/pgdn"), Span::styled("      jump 10 rows", st(TEXT))]),
+        Line::from(vec![key("home/end"), Span::styled("       first / last", st(TEXT))]),
+        Line::from(vec![key("b / esc"), Span::styled("      back", st(TEXT))]),
+        Line::from(vec![key("ctrl+c / q"), Span::styled("   quit", st(TEXT))]),
         Line::from(vec![key("?"), Span::styled("            this help", st(TEXT))]),
-        Line::from(vec![key("q"), Span::styled("            quit", st(TEXT))]),
         Line::from(""),
         Line::from(vec![Span::styled(
             "  Language tags like [Hindi, English] are parsed from",
