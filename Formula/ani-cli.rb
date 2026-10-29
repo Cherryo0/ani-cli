@@ -1,8 +1,8 @@
 class AniCli < Formula
   desc "Watch anime in your terminal - multi-provider TUI"
   homepage "https://github.com/Cherryo0/ani-cli"
-  url "https://github.com/Cherryo0/ani-cli/archive/refs/tags/v0.1.4.tar.gz"
-  sha256 "7701921b92ebe352fa700f95be4c146aa3b40113080e1f293e82ee10e504eda1"
+  url "https://github.com/Cherryo0/ani-cli/archive/refs/tags/v0.1.5.tar.gz"
+  sha256 "f61482eb8c3f95b96fdf1382f423238417e775b2370b4394623bf5e7677f4a5e"
   license "MIT"
 
   depends_on "rust" => :build
