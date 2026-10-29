@@ -47,15 +47,15 @@ fn sample_episode() -> Episode {
 }
 
 #[test]
-fn home_empty_shows_search_tabs_and_hints() {
+fn home_empty_shows_logo_search_pill_and_hints() {
     let mut app = App::new(None, None);
     let text = render(&mut app);
-    assert!(text.contains("Search"), "search box missing");
-    assert!(text.contains("HiAnimeX"), "provider tabs missing");
-    assert!(text.contains("WatchAnimeWorld"), "provider tabs missing");
-    assert!(text.contains("AnimoStream"), "provider tabs missing");
-    assert!(text.contains("/ search"), "key hints missing");
-    assert!(text.contains("Trending"), "trending list missing");
+    assert!(text.contains("Search anime"), "search placeholder missing");
+    // Provider pill shows the active provider, MovieBox-Tui style.
+    assert!(text.contains("HiAnimeX"), "provider pill missing");
+    assert!(text.contains("Tab"), "provider switch hint missing");
+    assert!(text.contains("search"), "bottom bar hints missing");
+    assert!(text.contains("quit"), "bottom bar hints missing");
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn home_loading_spinner_visible() {
     let mut app = App::new(None, None);
     app.loading = true;
     let text = render(&mut app);
-    assert!(text.contains("loading"), "loading indicator missing");
+    assert!(text.contains("Loading"), "loading indicator missing");
 }
 
 #[test]
@@ -179,8 +179,16 @@ fn help_overlay_shows_keybindings() {
 fn footer_hints_change_per_screen() {
     let mut app = App::new(None, None);
     let home = render(&mut app);
-    assert!(home.contains("tab provider"), "home hints wrong");
+    assert!(home.contains("provider"), "home hints wrong");
     app.screen = Screen::Detail;
+    app.detail = Some(AnimeDetails {
+        anime: sample_anime(),
+        synopsis: String::new(),
+        genres: vec![],
+        status: String::new(),
+        year: String::new(),
+    });
+    app.episodes = vec![sample_episode()];
     let detail = render(&mut app);
     assert!(detail.contains("play episode"), "detail hints wrong");
 }
