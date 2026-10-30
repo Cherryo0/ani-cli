@@ -40,9 +40,15 @@ mpv is recommended — it handles direct files, HLS streams and custom
 cargo install --git https://github.com/Cherryo0/ani-cli
 
 # macOS (Homebrew tap)
-brew tap cherryo0/anime
-brew install ani-cli
+brew tap Cherryo0/ani-cli https://github.com/Cherryo0/ani-cli.git
+brew trust Cherryo0/ani-cli
+brew install Cherryo0/ani-cli/ani-cli
 ```
+
+> Not affiliated with [pystardust/ani-cli](https://github.com/pystardust/ani-cli)
+> (the well-known shell script of the same name — it ships its own
+> `pystardust/ani-cli` tap). If you have both taps, always use the
+> fully-qualified name `Cherryo0/ani-cli/ani-cli` so Homebrew installs this one.
 
 ## Usage
 
